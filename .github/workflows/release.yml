@@ -1,0 +1,126 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+    env:
+      PACK_DIR: ${{ github.workspace }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get version from tag
+        id: version
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          if ($tag -match "^v(.+)$") {
+              $ver = $matches[1]
+          } else {
+              $ver = $tag
+          }
+          Write-Host "VERSION=$ver"
+          echo "VERSION=$ver" >> $env:GITHUB_OUTPUT
+
+      - name: Ensure Inno Setup (ISCC.exe)
+        shell: pwsh
+        run: |
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) {
+              Write-Host "Inno Setup not found, installing via Chocolatey..."
+              choco install innosetup -y --no-progress
+          }
+          if (-not (Test-Path $iscc)) {
+              $iscc64 = "C:\Program Files\Inno Setup 6\ISCC.exe"
+              if (Test-Path $iscc64) {
+                  Write-Host "ISCC found at $iscc64"
+              } else {
+                  Write-Error "ISCC.exe not found after install"
+                  exit 1
+              }
+          }
+
+      - name: Compile installer
+        shell: pwsh
+        run: |
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { $iscc = "C:\Program Files\Inno Setup 6\ISCC.exe" }
+          $issFile = "$env:PACK_DIR\installer\FreeLLMAPI-Launcher.iss"
+          $ver = "${{ steps.version.outputs.VERSION }}"
+          $args = @(
+              "/DMyAppVersion=$ver",
+              "/DPackDir=$env:PACK_DIR",
+              "/o$env:PACK_DIR\installer\output",
+              $issFile
+          )
+          Write-Host "Running: $iscc $args"
+          & $iscc @args
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      - name: Find built installer
+        id: artifact
+        shell: pwsh
+        run: |
+          $outputDir = "$env:PACK_DIR\installer\output"
+          $exe = Get-ChildItem $outputDir -Filter "*.exe" -File | Select-Object -First 1
+          if (-not $exe) { Write-Error "No .exe found in $outputDir"; exit 1 }
+          Write-Host "EXE_PATH=$($exe.FullName)"
+          echo "EXE_PATH=$($exe.FullName)" >> $env:GITHUB_OUTPUT
+          echo "EXE_NAME=$($exe.Name)" >> $env:GITHUB_OUTPUT
+
+      - name: Create zip archive (without .github and .git)
+        shell: pwsh
+        run: |
+          $ver = "${{ steps.version.outputs.VERSION }}"
+          $zipName = "freellmapi-launcher-pack-v$ver.zip"
+          $zipPath = "$env:PACK_DIR\$zipName"
+          $exclude = @(".github", ".git")
+          Compress-Archive -Path "$env:PACK_DIR\*" -DestinationPath $zipPath -Force `
+              -CompressionLevel Optimal `
+              -Exception $exclude
+          Write-Host "ZIP_PATH=$zipPath"
+          echo "ZIP_PATH=$zipPath" >> $env:GITHUB_OUTPUT
+          echo "ZIP_NAME=$zipName" >> $env:GITHUB_OUTPUT
+
+      - name: Generate checksums
+        id: checksums
+        shell: pwsh
+        run: |
+          $exe = "${{ steps.artifact.outputs.EXE_PATH }}"
+          $zip = "${{ steps.checksums.outputs.ZIP_PATH }}"
+          $sums = @()
+          if (Test-Path $exe) {
+              $h = Get-FileHash -Algorithm SHA256 $exe
+              $sums += "$($h.Hash)  $($h.Path)"
+          }
+          if (Test-Path $zip) {
+              $h = Get-FileHash -Algorithm SHA256 $zip
+              $sums += "$($h.Hash)  $($h.Path)"
+          }
+          $checksumsFile = "$env:PACK_DIR\checksums.txt"
+          Set-Content -Path $checksumsFile -Value ($sums -join "`n") -Encoding utf8
+          Write-Host "CHECKSUMS_PATH=$checksumsFile"
+          echo "CHECKSUMS_PATH=$checksumsFile" >> $env:GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: FreeLLMAPI Launcher ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: |
+            ${{ steps.artifact.outputs.EXE_PATH }}
+            ${{ steps.checksums.outputs.ZIP_PATH }}
+            ${{ steps.checksums.outputs.CHECKSUMS_PATH }}

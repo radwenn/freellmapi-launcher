@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  lint-and-security:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Parse PowerShell scripts
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $files = Get-ChildItem -Recurse -Filter "*.ps1" -File
+          $hasError = $false
+          foreach ($f in $files) {
+              $errors = $null
+              $tokens = $null
+              $ast = [System.Management.Automation.Language.Parser]::ParseFile($f.FullName, [ref]$tokens, [ref]$errors)
+              if ($errors.Count -gt 0) {
+                  Write-Error "Parse error in $($f.FullName): $($errors | Out-String)"
+                  $hasError = $true
+              } else {
+                  Write-Host "OK: $($f.FullName)"
+              }
+          }
+          if ($hasError) { exit 1 }
+
+      - name: Scan for secret patterns
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $patterns = @(
+              "sk-ant-",
+              "sk-or-",
+              "gsk_",
+              "AIza",
+              "ENCRYPTION_KEY\s*=\s*\S+"
+          )
+          $files = Get-ChildItem -Recurse -File -Exclude "*.md", "*.txt", "*.yml", "*.yaml", ".gitignore", "LICENSE" | Where-Object { $_.FullName -notmatch '\\.github\\workflows\\' }
+          $found = $false
+          foreach ($f in $files) {
+              $content = Get-Content -Raw -Path $f.FullName -ErrorAction SilentlyContinue
+              if ($null -eq $content) { continue }
+              foreach ($p in $patterns) {
+                  if ($content -match $p) {
+                      Write-Error "Potential secret pattern '$p' found in $($f.FullName)"
+                      $found = $true
+                  }
+              }
+          }
+          if ($found) { exit 1 }
+          Write-Host "No secret patterns detected."
+
+      - name: Scan for hardcoded personal paths
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $files = Get-ChildItem -Recurse -File -Include "*.ps1", "*.bat", "*.iss" | Where-Object { $_.FullName -notmatch '\\.github\\workflows\\' }
+          $found = $false
+          foreach ($f in $files) {
+              $content = Get-Content -Raw -Path $f.FullName -ErrorAction SilentlyContinue
+              if ($null -eq $content) { continue }
+              if ($content -match "C:\\\\Users\\\\") {
+                  Write-Error "Hardcoded C:\Users\ path found in $($f.FullName)"
+                  $found = $true
+              }
+          }
+          if ($found) { exit 1 }
+          Write-Host "No hardcoded personal paths detected."

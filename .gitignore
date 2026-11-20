@@ -1,0 +1,27 @@
+# Secrets and keys
+.env
+*.key
+*.pem
+.secrets/
+
+# Databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Node
+node_modules/
+
+# Installer output
+installer/output/
+
+# Logs
+*.log
+
+# OS
+Thumbs.db
+Desktop.ini
+
+# IDE
+.vscode/
+.idea/
