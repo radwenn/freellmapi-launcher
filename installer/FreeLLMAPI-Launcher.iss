@@ -14,13 +14,16 @@ ArchitecturesInstallIn64BitMode=x64
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
-Languages=english french
+
+[Languages]
+Name: "english"; MessagesFile: "compiler:Default.isl"
+Name: "french"; MessagesFile: "compiler:Languages\French.isl"
 
 [Files]
-Source: "{src}\*"; Flags: recursesubdirs excludehidden
+Source: "{#PackDir}\*"; DestDir: "{app}"; Flags: recursesubdirs excludehidden
 
 [Registry]
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "FreeLLMAPILauncher"; ValueString: "powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File ""{app}\launcher.ps1"""
 
 [Run]
-Filename: "{app}\setup.ps1"; Description: "Start FreeLLMAPI proxy"; Flags: postinstall runifstillrunning skipifsilent
+Filename: "{app}\setup.ps1"; Description: "Start FreeLLMAPI proxy"; Parameters: ""; Flags: postinstall waituntilterminated skipifsilent
