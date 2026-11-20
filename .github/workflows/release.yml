@@ -79,15 +79,15 @@ jobs:
           echo "EXE_NAME=$($exe.Name)" >> $env:GITHUB_OUTPUT
 
       - name: Create zip archive (without .github and .git)
+        id: zip
         shell: pwsh
         run: |
           $ver = "${{ steps.version.outputs.VERSION }}"
           $zipName = "freellmapi-launcher-pack-v$ver.zip"
           $zipPath = "$env:PACK_DIR\$zipName"
           $exclude = @(".github", ".git")
-          Compress-Archive -Path "$env:PACK_DIR\*" -DestinationPath $zipPath -Force `
-              -CompressionLevel Optimal `
-              -Exception $exclude
+          $items = Get-ChildItem -Path $env:PACK_DIR -Force | Where-Object { $_.Name -notin $exclude }
+          $items | Compress-Archive -DestinationPath $zipPath -Force -CompressionLevel Optimal
           Write-Host "ZIP_PATH=$zipPath"
           echo "ZIP_PATH=$zipPath" >> $env:GITHUB_OUTPUT
           echo "ZIP_NAME=$zipName" >> $env:GITHUB_OUTPUT
@@ -97,7 +97,7 @@ jobs:
         shell: pwsh
         run: |
           $exe = "${{ steps.artifact.outputs.EXE_PATH }}"
-          $zip = "${{ steps.checksums.outputs.ZIP_PATH }}"
+          $zip = "${{ steps.zip.outputs.ZIP_PATH }}"
           $sums = @()
           if (Test-Path $exe) {
               $h = Get-FileHash -Algorithm SHA256 $exe
@@ -122,5 +122,5 @@ jobs:
           generate_release_notes: true
           files: |
             ${{ steps.artifact.outputs.EXE_PATH }}
-            ${{ steps.checksums.outputs.ZIP_PATH }}
+            ${{ steps.zip.outputs.ZIP_PATH }}
             ${{ steps.checksums.outputs.CHECKSUMS_PATH }}
