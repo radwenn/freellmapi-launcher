@@ -35,43 +35,78 @@ jobs:
       - name: Ensure Inno Setup (ISCC.exe)
         shell: pwsh
         run: |
-          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
-          if (-not (Test-Path $iscc)) {
-              Write-Host "Inno Setup not found, installing via Chocolatey..."
-              choco install innosetup -y --no-progress
-          }
-          if (-not (Test-Path $iscc)) {
-              $iscc64 = "C:\Program Files\Inno Setup 6\ISCC.exe"
-              if (Test-Path $iscc64) {
-                  Write-Host "ISCC found at $iscc64"
-              } else {
-                  Write-Error "ISCC.exe not found after install"
-                  exit 1
+          # Try known paths first
+          $paths = @(
+              "C:\Program Files (x86)\Inno Setup 6\ISCC.exe",
+              "C:\Program Files\Inno Setup 6\ISCC.exe"
+          )
+          foreach ($p in $paths) {
+              if (Test-Path $p) {
+                  Write-Host "ISCC found at $p"
+                  exit 0
               }
           }
+
+          Write-Host "Inno Setup not found, installing via Chocolatey..."
+          choco install innosetup -y --no-progress
+          
+          # Refresh path for the current process
+          $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
+          
+          # Re-check
+          foreach ($p in $paths) {
+              if (Test-Path $p) {
+                  Write-Host "ISCC found at $p after install"
+                  exit 0
+              }
+          }
+          
+          # Try to find it in Path
+          $iscc = Get-Command ISCC.exe -ErrorAction SilentlyContinue
+          if ($iscc) {
+              Write-Host "ISCC found in PATH: $($iscc.Source)"
+              exit 0
+          }
+
+          Write-Error "ISCC.exe not found even after install"
+          exit 1
 
       - name: Compile installer
         shell: pwsh
         run: |
-          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
-          if (-not (Test-Path $iscc)) { $iscc = "C:\Program Files\Inno Setup 6\ISCC.exe" }
-          $issFile = "$env:PACK_DIR\installer\FreeLLMAPI-Launcher.iss"
+          $iscc = Get-Command ISCC.exe -ErrorAction SilentlyContinue
+          if (-not $iscc) {
+              $paths = @(
+                  "C:\Program Files (x86)\Inno Setup 6\ISCC.exe",
+                  "C:\Program Files\Inno Setup 6\ISCC.exe"
+              )
+              foreach ($p in $paths) { if (Test-Path $p) { $iscc = $p; break } }
+          } else {
+              $iscc = $iscc.Source
+          }
+          
+          if (-not $iscc) { Write-Error "ISCC.exe not found"; exit 1 }
+
+          $issFile = Join-Path $env:PACK_DIR "installer\FreeLLMAPI-Launcher.iss"
+          $outputDir = Join-Path $env:PACK_DIR "installer\output"
           $ver = "${{ steps.version.outputs.VERSION }}"
+          
           $args = @(
               "/DMyAppVersion=$ver",
               "/DPackDir=$env:PACK_DIR",
-              "/o$env:PACK_DIR\installer\output",
+              "/o$outputDir",
               $issFile
           )
+          
           Write-Host "Running: $iscc $args"
-          & $iscc @args
+          & $iscc $args
           if ($LASTEXITCODE -ne 0) { exit 1 }
 
       - name: Find built installer
         id: artifact
         shell: pwsh
         run: |
-          $outputDir = "$env:PACK_DIR\installer\output"
+          $outputDir = Join-Path $env:PACK_DIR "installer\output"
           $exe = Get-ChildItem $outputDir -Filter "*.exe" -File | Select-Object -First 1
           if (-not $exe) { Write-Error "No .exe found in $outputDir"; exit 1 }
           Write-Host "EXE_PATH=$($exe.FullName)"
@@ -84,7 +119,7 @@ jobs:
         run: |
           $ver = "${{ steps.version.outputs.VERSION }}"
           $zipName = "freellmapi-launcher-pack-v$ver.zip"
-          $zipPath = "$env:PACK_DIR\$zipName"
+          $zipPath = Join-Path $env:PACK_DIR $zipName
           $exclude = @(".github", ".git")
           $items = Get-ChildItem -Path $env:PACK_DIR -Force | Where-Object { $_.Name -notin $exclude }
           $items | Compress-Archive -DestinationPath $zipPath -Force -CompressionLevel Optimal
@@ -101,14 +136,14 @@ jobs:
           $sums = @()
           if (Test-Path $exe) {
               $h = Get-FileHash -Algorithm SHA256 $exe
-              $sums += "$($h.Hash)  $($h.Path)"
+              $sums += "$($h.Hash)  $(Split-Path $exe -Leaf)"
           }
           if (Test-Path $zip) {
               $h = Get-FileHash -Algorithm SHA256 $zip
-              $sums += "$($h.Hash)  $($h.Path)"
+              $sums += "$($h.Hash)  $(Split-Path $zip -Leaf)"
           }
-          $checksumsFile = "$env:PACK_DIR\checksums.txt"
-          Set-Content -Path $checksumsFile -Value ($sums -join "`n") -Encoding utf8
+          $checksumsFile = Join-Path $env:PACK_DIR "checksums.txt"
+          Set-Content -Path $checksumsFile -Value ($sums -join "`r`n") -Encoding utf8
           Write-Host "CHECKSUMS_PATH=$checksumsFile"
           echo "CHECKSUMS_PATH=$checksumsFile" >> $env:GITHUB_OUTPUT
 
