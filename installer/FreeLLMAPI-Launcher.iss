@@ -20,7 +20,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "french"; MessagesFile: "compiler:Languages\French.isl"
 
 [Files]
-Source: "{#PackDir}\*"; DestDir: "{app}"; Flags: recursesubdirs excludehidden
+Source: "{#PackDir}\*"; DestDir: "{app}"; Excludes: ".git\*,.github\*,installer\output\*"; Flags: recursesubdirs
 
 [Registry]
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "FreeLLMAPILauncher"; ValueData: "powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File ""{app}\launcher.ps1"""
