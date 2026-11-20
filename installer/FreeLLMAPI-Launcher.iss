@@ -23,7 +23,7 @@ Name: "french"; MessagesFile: "compiler:Languages\French.isl"
 Source: "{#PackDir}\*"; DestDir: "{app}"; Flags: recursesubdirs excludehidden
 
 [Registry]
-Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "FreeLLMAPILauncher"; Value: "powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File ""{app}\launcher.ps1"""
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "FreeLLMAPILauncher"; ValueData: "powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File ""{app}\launcher.ps1"""
 
 [Run]
 Filename: "{app}\setup.ps1"; Description: "Start FreeLLMAPI proxy"; Parameters: ""; Flags: postinstall waituntilterminated skipifsilent
